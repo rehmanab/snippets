@@ -1,0 +1,8 @@
+# LINQPad custom key bindings for Windows
+
+Ctrl+G: Execute
+Ctrl+Alt+Shift+P: AIChat
+Ctrl+P: CompleteParameters
+Ctrl+T: CancelAndKillProcess
+Ctrl+L: EditorDeleteLine
+Ctrl+Alt+Shift+Space: AIComplete

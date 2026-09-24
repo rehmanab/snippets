@@ -1,0 +1,23 @@
+# LINQPad custom key bindings for macOS
+
+Control-G: Execute
+Control+Option+Shift+P: AIChat
+Control-Shift-F5: CancelAndKillProcess
+Option-Command-Period: #none
+Shift-Command-F5: #none
+Option-Command-Period: #none
+Shift-Command-F5: #none
+Control-Left: EditorMoveToPreviousWord
+Control-Right: EditorMoveToNextWord
+Control-S: Save
+
+Control-Shift-Left: EditorSelectToPreviousWord
+Control-Shift-Right: EditorSelectToNextWord
+Shift-Left: EditorSelectLeft
+
+Control-P: CompleteParameters
+Control-T: CancelAndKillProcess
+Control-Question: ToggleCommentSelection
+Option-Enter: #none
+Control-Period: ShowCodeFixes
+Control-Shift-Command-Space: AIComplete
