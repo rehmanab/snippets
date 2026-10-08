@@ -114,7 +114,8 @@ public async IAsyncEnumerable<IEnumerable<string>> GetQueueUrlsAsync(IAmazonSQS 
 
 	var response = await sqsClient.ListQueuesAsync(new ListQueuesRequest 
 	{
-		QueueNamePrefix = queueNamePrefix
+		QueueNamePrefix = queueNamePrefix,
+		MaxResults = 1000
 	});
 
 	if (response == null || response.QueueUrls == null || !response.QueueUrls.Any()) yield break;
@@ -126,7 +127,8 @@ public async IAsyncEnumerable<IEnumerable<string>> GetQueueUrlsAsync(IAmazonSQS 
 		response = await sqsClient.ListQueuesAsync(new ListQueuesRequest
 		{
 			QueueNamePrefix = queueNamePrefix,
-			NextToken = response.NextToken
+			NextToken = response.NextToken,
+			MaxResults = 1000
 		});
 		if (response == null || response.QueueUrls == null || !response.QueueUrls.Any()) yield break;
 		yield return showNameOfQueueOnly ? response.QueueUrls.Select(parseName) : response.QueueUrls;
