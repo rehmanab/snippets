@@ -65,13 +65,19 @@ public async Task<string> GetTopicArnAsync(IAmazonSimpleNotificationService snsC
 		var response = await snsClient.ListTopicsAsync(nextToken);
 		if (response == null || response.Topics == null) break;
 
-		topicArnFound = response.Topics?.Select(x => x.TopicArn).Where(y => y.ToLower().EndsWith($"{topicName.ToLower()}{(isFifo && !topicName.ToLower().EndsWith(FifoTopicSuffix) ? FifoTopicSuffix : "")}")).SingleOrDefault();
+		topicArnFound = response.Topics.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.TopicArn) && string.Equals(x.TopicArn.Split(":".ToCharArray(), StringSplitOptions.RemoveEmptyEntries).LastOrDefault(), AddTopicQueueNameFifoSuffix(topicName, isFifo), StringComparison.InvariantCultureIgnoreCase))?.TopicArn;
+
 		if (!string.IsNullOrWhiteSpace(topicArnFound)) found = true;
 		nextToken = response.NextToken;
 	}
 	while (!found && !string.IsNullOrEmpty(nextToken));
 
 	return !string.IsNullOrWhiteSpace(topicArnFound) ? topicArnFound : null;
+}
+
+public static string AddTopicQueueNameFifoSuffix(string name, bool isFifo)
+{
+	return !string.IsNullOrWhiteSpace(name) && isFifo && !name.EndsWith(".fifo") ? $"{name}{".fifo"}" : name;
 }
 
 // Subscriptions
