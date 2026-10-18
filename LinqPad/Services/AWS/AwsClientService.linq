@@ -105,23 +105,87 @@ public enum Environment
 
 // docker run --rm -p 4566:4566 -d --name floci floci/floci:latest
 // pointing to default parallels host Mac ipaddress (10.211.55.2) in hosts file (10.211.55.2 host), Parallels VM needs to be "Shared Network"
-public const string defaultEmulatorServiceUrl = "http://localhost:4566";
-public const string userSecretsName = "AWS.LinqPad.Secrets";
+private const string DefaultEmulatorServiceUrl = "http://localhost:4566";
+private const string DefaultEmulatorRegion = "us-east-1";
+public const string UserSecretsName = "AWS.LinqPad.Secrets";
+
+/// <summary>
+/// Gets the AWS Credentials from AWS profile (.aws) user folder
+/// </summary>
+public TClient GetAwsClient<TClient, TConfig>(string? profileName = null, string? regionEndpoint = null, string? serviceUrl = null)
+	where TClient : AmazonServiceClient
+	where TConfig : ClientConfig, new()
+{
+	var sharedFile = new SharedCredentialsFile();
+	var config = new TConfig();
+
+	var serviceName = typeof(TClient).Name;
+
+	if (string.IsNullOrWhiteSpace(profileName))
+	{
+		var emulatorRegion = string.IsNullOrWhiteSpace(regionEndpoint) ? DefaultEmulatorRegion : regionEndpoint;
+
+		config.RegionEndpoint = RegionEndpoint.GetBySystemName(emulatorRegion);
+		config.ServiceURL = string.IsNullOrWhiteSpace(serviceUrl) ? DefaultEmulatorServiceUrl : serviceUrl;
+		config.AuthenticationRegion = emulatorRegion;
+
+		Console.WriteLine($"Using Emulator: {serviceName}; ServiceUrl: {config.ServiceURL} ");
+		Console.WriteLine();
+
+		var localCredentials = new BasicAWSCredentials("test", "test");
+
+		return (TClient)Activator.CreateInstance(typeof(TClient), localCredentials, config)!;
+	}
+
+	if (!sharedFile.TryGetProfile(profileName, out var profile))
+	{
+		throw new Exception($"Profile '{profileName}' not found in AWS credentials/config file.");
+	}
+
+	AWSCredentialsFactory.TryGetAWSCredentials(profile, sharedFile, out var credentials);
+
+	if (!string.IsNullOrWhiteSpace(regionEndpoint))
+	{
+		config.RegionEndpoint = RegionEndpoint.GetBySystemName(regionEndpoint);
+	}
+	else
+	{
+		config.RegionEndpoint = profile.Region;
+	}
+
+	if (!string.IsNullOrWhiteSpace(serviceUrl))
+	{
+		config.ServiceURL = serviceUrl;
+	}
+	else if (!string.IsNullOrWhiteSpace(profile.EndpointUrl))
+	{
+		config.ServiceURL = profile.EndpointUrl;
+	}
+
+	var sts = new AmazonSecurityTokenServiceClient(credentials, RegionEndpoint.EUWest1);
+	var who = sts.GetCallerIdentityAsync(new GetCallerIdentityRequest()).Result;
+
+	Console.WriteLine($"Using AWS profile: {profileName} : {config.RegionEndpoint} for {serviceName} as Identity: {who.Arn}");
+	Console.WriteLine();
+
+	return (TClient)Activator.CreateInstance(typeof(TClient), credentials, config)!;
+}
 
 /// <summary>
 /// Gets the AWS Credentials from UserSecrets
 /// </summary>
+[Obsolete($"Use {nameof(GetAwsClient)} ex. GetAwsClient<AmazonSQSClient, AmazonSQSConfig>(profileName), this method is example of getting using .GetAWSOptions()")]
 public TClient GetAwsClient<TClient>(string? environmentName = null) where TClient : AmazonServiceClient
 {
 	var serviceName = typeof(TClient).Name;
 
 	var serviceCollection = new ServiceCollection();
-	var configuration = new ConfigurationBuilder().AddUserSecrets(userSecretsName).Build();
+	var configuration = new ConfigurationBuilder().AddUserSecrets(UserSecretsName).Build();
 	var awsOptions = configuration.GetAWSOptions();
 
 	if (string.IsNullOrWhiteSpace(environmentName))
 	{
-		awsOptions.DefaultClientConfig.ServiceURL = defaultEmulatorServiceUrl;
+		awsOptions.DefaultClientConfig.ServiceURL = DefaultEmulatorServiceUrl;
 
 		Console.WriteLine($"Using Emulator: {serviceName}; ServiceUrl: {awsOptions.DefaultClientConfig.ServiceURL} ");
 		Console.WriteLine();
@@ -165,38 +229,6 @@ public TClient GetAwsClient<TClient>(string? environmentName = null) where TClie
 	serviceCollection.AddAWSService<AmazonSecurityTokenServiceClient>();
 
 	return serviceCollection.BuildServiceProvider().GetService<TClient>() ?? throw new Exception($"Failed to get {serviceName}");
-}
-
-/// <summary>
-/// Gets the AWS Credentials from AWS profile (.aws) user folder
-/// </summary>
-public TClient GetAwsClient<TClient, TConfig>(string? profileName = null, string regionEndpoint = "eu-west-2", string? serviceUrl = null)
-	where TClient : AmazonServiceClient
-	where TConfig : ClientConfig, new()
-{
-	var sharedFile = new SharedCredentialsFile();
-	var config = new TConfig { RegionEndpoint = RegionEndpoint.GetBySystemName(regionEndpoint) };
-
-	var serviceName = typeof(TClient).Name;
-
-	if (string.IsNullOrWhiteSpace(profileName) || !sharedFile.TryGetProfile(profileName, out var profile))
-	{
-		config.ServiceURL = serviceUrl ?? defaultEmulatorServiceUrl;
-		
-		Console.WriteLine($"Using Emulator: {serviceName}; ServiceUrl: {config.ServiceURL} ");
-		Console.WriteLine();
-
-		var localCredentials = new BasicAWSCredentials("test", "test");
-
-		return (TClient)Activator.CreateInstance(typeof(TClient), localCredentials, config)!;
-	}
-
-	AWSCredentialsFactory.TryGetAWSCredentials(profile, sharedFile, out var credentials);
-
-	Console.WriteLine($"Using AWS profile: {profileName} : {regionEndpoint} for {serviceName}");
-	Console.WriteLine();
-
-	return (TClient)Activator.CreateInstance(typeof(TClient), credentials, config)!;
 }
 
 public AWSCredentials GetCredentialsFromProfile(string profileName)
@@ -254,54 +286,3 @@ public IAmazonCloudWatchLogs GetCloudWatchLogsClient(string? profileName = null,
 
 [Obsolete($"Use {nameof(GetAwsClient)} ex. GetAwsClient<AmazonSecurityTokenServiceClient, AmazonSecurityTokenServiceConfig>(profileName)")]
 public IAmazonSecurityTokenService GetSecurityTokenServiceClient(string? profileName = null, string regionEndpoint = "eu-west-2", string? serviceUrl = null) => GetAwsClient<AmazonSecurityTokenServiceClient, AmazonSecurityTokenServiceConfig>(profileName);
-
-// old eg.
-
-/*
-		var sharedFile = new SharedCredentialsFile();
-		var config = new AmazonSecurityTokenServiceConfig { RegionEndpoint = RegionEndpoint.GetBySystemName(regionEndpoint) };
-	
-		if (string.IsNullOrWhiteSpace(profileName) || !sharedFile.TryGetProfile(profileName, out var profile))
-		{
-			Console.WriteLine("Using LocalStack: CloudWatchLogs");
-			Console.WriteLine();
-			config.ServiceURL = defaultLocalStackServiceUrl;
-	
-			return new AmazonSecurityTokenServiceClient(new BasicAWSCredentials("test", "test"), config);
-		}
-	
-		AWSCredentialsFactory.TryGetAWSCredentials(profile, sharedFile, out var credentials);
-	
-		Console.WriteLine($"Using AWS profile: {profileName} : {regionEndpoint} for CloudWatchLogs client");
-		Console.WriteLine();
-		return new AmazonSecurityTokenServiceClient(credentials, config);
-*/
-
-//public TClient GetAwsClient<TClient, TConfig>(string? profileName = null, string regionEndpoint = "eu-west-2", string? serviceUrl = null)
-//	where TClient : AmazonServiceClient
-//	where TConfig : ClientConfig, new()
-//{
-//	var sharedFile = new SharedCredentialsFile();
-//	var config = new TConfig { RegionEndpoint = RegionEndpoint.GetBySystemName(regionEndpoint) };
-
-//	var serviceName = typeof(TClient).Name;
-
-//	if (string.IsNullOrWhiteSpace(profileName) || !sharedFile.TryGetProfile(profileName, out var profile))
-//	{
-//		config.ServiceURL = serviceUrl ?? defaultEmulatorServiceUrl;
-
-//		Console.WriteLine($"Using Emulator: {serviceName}; ServiceUrl: {config.ServiceURL} ");
-//		Console.WriteLine();
-
-//		var localCredentials = new BasicAWSCredentials("test", "test");
-
-//		return (TClient)Activator.CreateInstance(typeof(TClient), localCredentials, config)!;
-//	}
-
-//	AWSCredentialsFactory.TryGetAWSCredentials(profile, sharedFile, out var credentials);
-
-//	Console.WriteLine($"Using AWS profile: {profileName} : {regionEndpoint} for {serviceName}");
-//	Console.WriteLine();
-
-//	return (TClient)Activator.CreateInstance(typeof(TClient), credentials, config)!;
-//}
